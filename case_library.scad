@@ -22,7 +22,7 @@ module _box_shell(length, width, height, wall, corner_r, fn) {
     difference() {
         linear_extrude(height=height) _rounded_rect(length, width, corner_r, fn);
         translate([wall, wall, wall])
-            linear_extrude(height=height) // overshoots the top on purpose -> open top
+            linear_extrude(height=height + 0.1) // extra overshoot avoids coplanar Boolean artifacts
                 _rounded_rect(length - 2*wall, width - 2*wall, max(0.1, corner_r - wall), fn);
     }
 }
@@ -30,7 +30,7 @@ module _box_shell(length, width, height, wall, corner_r, fn) {
 module _dividers(length, width, height, wall, div_x, div_y, div_thickness) {
     inner_l = length - 2*wall;
     inner_w = width  - 2*wall;
-    div_h   = height - wall; // flush with the rim; the lid tray gives headroom above the seam
+    div_h   = height - wall - 0.1; // stop just below the rim to avoid coplanar skins
     if (div_x > 0) {
         step = inner_l / (div_x + 1);
         for (i = [1:div_x])
@@ -42,6 +42,32 @@ module _dividers(length, width, height, wall, div_x, div_y, div_thickness) {
         for (i = [1:div_y])
             translate([wall, wall + step*i - div_thickness/2, wall])
                 cube([inner_l, div_thickness, div_h]);
+    }
+}
+
+// Matching lid ribs close the headspace above body dividers so small parts cannot migrate.
+// They overlap the lid floor by 0.1 mm for a robust union and leave div_gap at the seam.
+// Keep a small clearance from the rebated front and side walls. The hinge-side ends
+// meet the full-thickness inner wall because there is no latch rebate there.
+module _lid_dividers(length, width, hb, hl, wall, div_x, div_y, div_thickness,
+                     div_gap=0.2, edge_clearance=0.4) {
+    inner_l = length - 2*wall;
+    inner_w = width  - 2*wall;
+    rib_l   = inner_l - 2*edge_clearance;
+    rib_w   = inner_w - edge_clearance;
+    rib_h   = max(0, hl - wall - div_gap + 0.1);
+    z0      = hb + div_gap;
+    if (div_x > 0) {
+        step = inner_l / (div_x + 1);
+        for (i = [1:div_x])
+            translate([wall + step*i - div_thickness/2, wall + edge_clearance, z0])
+                cube([div_thickness, rib_w, rib_h]);
+    }
+    if (div_y > 0) {
+        step = inner_w / (div_y + 1);
+        for (i = [1:div_y])
+            translate([wall + edge_clearance, wall + step*i - div_thickness/2, z0])
+                cube([rib_l, div_thickness, rib_h]);
     }
 }
 
@@ -113,6 +139,7 @@ module _hb_body(l, w, hb, wall, corner_r, div_x, div_y, div_t,
 // shell + lip rebate + front/top ribs + latch groove + lid text + hinge-clearance chamfer.
 module _hb_lid(l, w, hb, hl, wall, corner_r, c, lip_t, lip_ymax,
                lip_h, latch_w, latch_bump,
+               div_x, div_y, div_t, div_gap, div_clearance,
                rib_xs, rib_w, rib_d, back_ch,
                txt, txt_size, txt_depth, txt_emboss, fn) {
     top   = hb + hl;
@@ -163,6 +190,8 @@ module _hb_lid(l, w, hb, hl, wall, corner_r, c, lip_t, lip_ymax,
         if (back_ch > 0)
             _hb_edge_chamfer(l, w, hb, back_ch);
     }
+    // Add after the rebate/groove cuts so the containment ribs keep their full height.
+    _lid_dividers(l, w, hb, hl, wall, div_x, div_y, div_t, div_gap, div_clearance);
 }
 
 // Hinge leaves along the back seam, in closed-assembly coordinates. The hinge modules
@@ -261,6 +290,8 @@ module hinged_box(
     corner_r        = 6,
     div_x           = 0,
     div_y           = 0,
+    lid_dividers    = false,  // true = matching ribs under the lid to retain small parts
+    lid_divider_clearance = 0.4, // clearance at rebated front/side walls; hinge side stays flush
     div_thickness   = 1.6,
     hinge_type      = "piano", // "piano" | "knuckle" | "crate"
     hinge_count     = 2,      // knuckle/crate: number of discrete hinges
@@ -286,6 +317,8 @@ module hinged_box(
     fn              = 48
 ) {
     l = length; w = width; hb = height; hl = lid_depth; t = wall; c = lid_clearance;
+    lid_div_x = lid_dividers ? div_x : 0;
+    lid_div_y = lid_dividers ? div_y : 0;
     crate = hinge_type == "crate";
     flush = hinge_type == "flush";
     kod   = flush ? t : (knuckle_od > 0 ? knuckle_od : max(5, 2*t));
@@ -376,7 +409,8 @@ module hinged_box(
                 union() {
                     difference() {
                         _hb_lid(l, w, hb, hl, t, corner_r, c, lip_t, lip_ymax, lip_he,
-                                latch_w, lb, rib_xs, rw, rd, ch,
+                                latch_w, lb, lid_div_x, lid_div_y, div_thickness, 0.2,
+                                lid_divider_clearance, rib_xs, rw, rd, ch,
                                 lid_text, lid_text_size, lid_text_depth, lid_text_emboss, fn);
                         _hb_axis_cyl(rel_xs, rel_len, y_ax, hb, relief_r, fn);
                     }
@@ -401,7 +435,9 @@ module hinged_box(
                         union() {
                             difference() {
                                 _hb_lid(l, w, hb, hl, t, corner_r, c, lip_t, lip_ymax,
-                                        lip_he, latch_w, lb, rib_xs, rw, rd, ch,
+                                        lip_he, latch_w, lb, lid_div_x, lid_div_y,
+                                        div_thickness, 0.2, lid_divider_clearance,
+                                        rib_xs, rw, rd, ch,
                                         lid_text, lid_text_size, lid_text_depth,
                                         lid_text_emboss, fn);
                                 _hb_axis_cyl(rel_xs, rel_len, y_ax, hb, relief_r, fn);
