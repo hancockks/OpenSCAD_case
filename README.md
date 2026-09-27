@@ -118,6 +118,8 @@ supports; the chunky crate lugs stick out further and may want supports or tuned
 | `corner_r` | 6 | Outer corner rounding radius |
 | `div_x` | 0 | Internal dividers splitting `length` (walls run along Y) |
 | `div_y` | 0 | Internal dividers splitting `width` (walls run along X) |
+| `lid_dividers` | false | Add matching ribs under the lid to retain parts in their compartments |
+| `lid_divider_clearance` | 0.4 | Clearance from the rebated front/side walls; hinge-side ribs remain flush |
 | `div_thickness` | 1.6 | Divider wall thickness |
 | `hinge_type` | "piano" | `"piano"` / `"knuckle"` / `"crate"` / `"flush"` |
 | `hinge_count` | 2 | Number of discrete hinges (knuckle/crate) |
